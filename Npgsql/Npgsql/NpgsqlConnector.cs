@@ -208,7 +208,11 @@ namespace Npgsql
             _isInitialized = false;
             _state = NpgsqlClosedState.Instance;
             _mediator = new NpgsqlMediator();
+#if REDSHIFT
+            _NativeToBackendTypeConverterOptions = NativeToBackendTypeConverterOptions.Redshift.Clone(new NpgsqlBackendTypeMapping());
+#else
             _NativeToBackendTypeConverterOptions = NativeToBackendTypeConverterOptions.Default.Clone(new NpgsqlBackendTypeMapping());
+#endif
             _planIndex = 0;
             _portalIndex = 0;
             _notificationThreadStopCount = 1;
@@ -949,8 +953,9 @@ namespace Npgsql
                  * money is formatted as ($value) with parentheses to indicate negative value.
                  * By going with a culture agnostic format, we get a consistent behavior.
                  */
-
+#if !REDSHIFT
                 sbInitQueries.WriteLine("SET lc_monetary='C';");
+#endif
             }
             else
             {

@@ -45,6 +45,7 @@ namespace NpgsqlTypes
     internal class NativeToBackendTypeConverterOptions : ICloneable
     {
         internal static NativeToBackendTypeConverterOptions _default;
+        internal static NativeToBackendTypeConverterOptions _redshift;
 
         private bool IsImmutable;
         private bool _UseConformantStrings;
@@ -55,6 +56,9 @@ namespace NpgsqlTypes
         static NativeToBackendTypeConverterOptions()
         {
             _default = new NativeToBackendTypeConverterOptions(true, false, true, false, null);
+            
+            // Amazon Redshift não suporta o prefixo E'varchar'
+            _redshift = new NativeToBackendTypeConverterOptions(true, false, false, false, null);
         }
 
         internal static NativeToBackendTypeConverterOptions Default
@@ -62,6 +66,14 @@ namespace NpgsqlTypes
             get
             {
                 return _default;
+            }
+        }
+
+        internal static NativeToBackendTypeConverterOptions Redshift
+        {
+            get
+            {
+                return _redshift;
             }
         }
 
