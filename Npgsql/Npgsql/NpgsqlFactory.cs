@@ -93,6 +93,8 @@ namespace Npgsql
                 try {
                     npgsqlEfAssembly = Assembly.Load(assemblyName.FullName);
                 } catch (Exception e) {
+                    // Deve instalar a DLL no GAC
+                    // --> gacutil /i Npgsql.EntityFrameworkLegacy
                     throw new Exception("Could not load Npgsql.EntityFrameworkLegacy assembly, is it installed?", e);
                 }
 

@@ -441,7 +441,9 @@ namespace Npgsql
 
         internal void ReleaseRegisteredListen()
         {
+#if !REDSHIFT
             NpgsqlCommand.ExecuteBlind(this, "UNLISTEN *");
+#endif
         }
 
         /// <summary>
