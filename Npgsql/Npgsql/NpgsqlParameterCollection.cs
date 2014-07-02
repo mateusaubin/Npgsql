@@ -347,12 +347,7 @@ namespace Npgsql
         public override void RemoveAt(string parameterName)
         {
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "RemoveAt", parameterName);
-
-            int index = IndexOf(parameterName);
-            NpgsqlParameter existing = InternalList[index];
-            this.InternalList.RemoveAt(index);
-            existing.Collection = null;
-            this.InvalidateHashLookups();
+            RemoveAt(this.IndexOf(parameterName));
         }
 
         /// <summary>
@@ -468,6 +463,9 @@ namespace Npgsql
 
         #region IList Member
 
+        /// <summary>
+        /// Report whether the collection is read only.  Always false.
+        /// </summary>
         public override bool IsReadOnly
         {
             get
@@ -484,15 +482,11 @@ namespace Npgsql
         public override void RemoveAt(int index)
         {
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "RemoveAt", index);
-
-            if (InternalList.Count - 1 < index)
+            if(this.InternalList.Count - 1 < index)
             {
                 throw new IndexOutOfRangeException();
             }
-
-            InternalList[index].Collection = null;
-            InternalList.RemoveAt(index);
-            InvalidateHashLookups();
+            Remove(this.InternalList[index]);
         }
 
         /// <summary>
@@ -526,19 +520,14 @@ namespace Npgsql
         {
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "Remove", parameterName);
 
-            int index;
-
-            index = IndexOf(parameterName);
-
+            int index = IndexOf(parameterName);
             if (index < 0)
             {
                 throw new InvalidOperationException("No parameter with the specified name exists in the collection");
             }
-
-            this.InternalList[index].Collection = null;
-            this.InternalList.RemoveAt(index);
-            this.InvalidateHashLookups();
+            RemoveAt(index);
         }
+
 
         /// <summary>
         /// Removes the specified <see cref="Npgsql.NpgsqlParameter">NpgsqlParameter</see> from the collection.
@@ -547,20 +536,10 @@ namespace Npgsql
         public override void Remove(object oValue)
         {
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "Remove", oValue);
-
             CheckType(oValue);
-
-            NpgsqlParameter value = oValue as NpgsqlParameter;
-
-            if (value.Collection != this)
-            {
-                throw new InvalidOperationException("The item does not belong to this collection");
-            }
-
-            value.Collection = null;
-            this.InternalList.Remove(value);
-            this.InvalidateHashLookups();
+            Remove(oValue as NpgsqlParameter);
         }
+
 
         /// <summary>
         /// Gets a value indicating whether a <see cref="Npgsql.NpgsqlParameter">NpgsqlParameter</see> exists in the collection.
@@ -609,6 +588,11 @@ namespace Npgsql
         public override void Clear()
         {
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "Clear");
+            foreach(NpgsqlParameter toRemove in this.InternalList)
+            {
+                // clean up the parameter so it can be added to another command if required.
+                toRemove.Collection = null;
+            }
             this.InternalList.Clear();
             this.InvalidateHashLookups();
         }
@@ -638,6 +622,9 @@ namespace Npgsql
             return Count - 1;
         }
 
+        /// <summary>
+        /// Report whether the collection is fixed size.  Always false.
+        /// </summary>
         public override bool IsFixedSize
         {
             get
@@ -651,6 +638,9 @@ namespace Npgsql
 
         #region ICollection Member
 
+        /// <summary>
+        /// Report whether the collection is synchronized.
+        /// </summary>
         public override bool IsSynchronized
         {
             get
@@ -690,6 +680,9 @@ namespace Npgsql
             IRaiseItemChangedEvents x = InternalList as IRaiseItemChangedEvents;
         }
 
+        /// <summary>
+        /// Sync root.
+        /// </summary>
         public override object SyncRoot
         {
             get
@@ -715,6 +708,10 @@ namespace Npgsql
 
         #endregion
 
+        /// <summary>
+        /// Add an Array of parameters to the collection.
+        /// </summary>
+        /// <param name="values">Parameters to add.</param>
         public override void AddRange(Array values)
         {
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "AddRange", values);
@@ -724,21 +721,41 @@ namespace Npgsql
             }
         }
 
+        /// <summary>
+        /// Get parameter.
+        /// </summary>
+        /// <param name="parameterName"></param>
+        /// <returns></returns>
         protected override DbParameter GetParameter(string parameterName)
         {
             return this[parameterName];
         }
 
+        /// <summary>
+        /// Get parameter.
+        /// </summary>
+        /// <param name="index"></param>
+        /// <returns></returns>
         protected override DbParameter GetParameter(int index)
         {
             return this[index];
         }
 
+        /// <summary>
+        /// Set parameter.
+        /// </summary>
+        /// <param name="parameterName"></param>
+        /// <param name="value"></param>
         protected override void SetParameter(string parameterName, DbParameter value)
         {
             this[parameterName] = (NpgsqlParameter) value;
         }
 
+        /// <summary>
+        /// Set parameter.
+        /// </summary>
+        /// <param name="index"></param>
+        /// <param name="value"></param>
         protected override void SetParameter(int index, DbParameter value)
         {
             this[index] = (NpgsqlParameter) value;
@@ -776,11 +793,21 @@ namespace Npgsql
         }
 */
 
+        /// <summary>
+        /// Report the offset within the collection of the given parameter.
+        /// </summary>
+        /// <param name="item">Parameter to find.</param>
+        /// <returns>Index of the parameter, or -1 if the parameter is not present.</returns>
         public int IndexOf(NpgsqlParameter item)
         {
             return InternalList.IndexOf(item);
         }
 
+        /// <summary>
+        /// Insert the specified parameter into the collection.
+        /// </summary>
+        /// <param name="index">Index of the existing parameter before which to insert the new one.</param>
+        /// <param name="item">Parameter to insert.</param>
         public void Insert(int index, NpgsqlParameter item)
         {
             if (item.Collection != null)
@@ -793,29 +820,54 @@ namespace Npgsql
             this.InvalidateHashLookups();
         }
 
+        /// <summary>
+        /// Report whether the specified parameter is present in the collection.
+        /// </summary>
+        /// <param name="item">Parameter to find.</param>
+        /// <returns>True if the parameter was found, otherwise false.</returns>
         public bool Contains(NpgsqlParameter item)
         {
             return InternalList.Contains(item);
         }
 
+        /// <summary>
+        /// Remove the specified parameter from the collection.
+        /// </summary>
+        /// <param name="item">Parameter to remove.</param>
+        /// <returns>True if the parameter was found and removed, otherwise false.</returns>
         public bool Remove(NpgsqlParameter item)
         {
-            if (InternalList.Remove(item))
+            if(item == null)
+            {
+                return false;
+            }
+            if(item.Collection != this)
+            {
+                throw new InvalidOperationException("The item does not belong to this collection");
+            }
+            if(InternalList.Remove(item))
             {
                 item.Collection = null;
                 this.InvalidateHashLookups();
-
                 return true;
             }
-
             return false;
         }
 
+        /// <summary>
+        /// Convert collection to a System.Array.
+        /// </summary>
+        /// <param name="array">Destination array.</param>
+        /// <param name="arrayIndex">Starting index in destination array.</param>
         public void CopyTo(NpgsqlParameter[] array, int arrayIndex)
         {
             InternalList.CopyTo(array, arrayIndex);
         }
 
+        /// <summary>
+        /// Convert collection to a System.Array.
+        /// </summary>
+        /// <returns>NpgsqlParameter[]</returns>
         public NpgsqlParameter[] ToArray()
         {
             return InternalList.ToArray();

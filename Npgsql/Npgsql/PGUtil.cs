@@ -35,6 +35,9 @@ using System.Reflection;
 using System.Resources;
 using System.Text;
 
+// Keep the xml comment warning quiet for this file.
+#pragma warning disable 1591
+
 namespace Npgsql
 {
     ///<summary>
@@ -87,9 +90,6 @@ namespace Npgsql
         {
             switch (Ver)
             {
-                case ProtocolVersion.Version2:
-                    return (int) ServerVersionCode.ProtocolVersion2;
-
                 case ProtocolVersion.Version3:
                     return (int) ServerVersionCode.ProtocolVersion3;
             }
@@ -764,7 +764,6 @@ namespace Npgsql
     public enum ProtocolVersion
     {
         Unknown  = 0,
-        Version2 = 2,
         Version3 = 3
     }
 
@@ -1009,3 +1008,5 @@ namespace Npgsql
         }
     }
 }
+
+#pragma warning restore 1591

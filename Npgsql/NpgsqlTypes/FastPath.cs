@@ -38,42 +38,42 @@ using Npgsql;
 
 namespace NpgsqlTypes
 {
-    /*
-     * This class implements the Fastpath api.
-     *
-     *
-     *
-     */
-
+    /// <summary>
+    /// This class implements the Fastpath api.
+    /// </summary>
     public class Fastpath
     {
-        // This maps the functions names to their id's (possible unique just
-        // to a connection).
+        /// <summary>
+        /// This maps the functions names to their id's (possible unique just
+        /// to a connection).
+        /// </summary>
         protected Dictionary<string, int> func = new Dictionary<string, int>();
 
-        protected NpgsqlConnection conn; // our connection
-        protected Stream stream; // the network stream
+        /// <summary>
+        /// Our connection.
+        /// </summary>
+        protected NpgsqlConnection conn;
 
-        /*
-         * Initialises the fastpath system
-         *
-         * @param conn BaseConnection to attach to
-         * @param stream The network stream to the backend
-         */
+        /// <summary>
+        /// The network stream.
+        /// </summary>
+        protected Stream stream;
 
+        /// <summary>
+        /// Initialises the fastpath system.
+        /// </summary>
+        /// <param name="conn">BaseConnection to attach to.</param>
+        /// <param name="stream">The network stream to the backend.</param>
         public Fastpath(NpgsqlConnection conn, Stream stream)
         {
             this.conn = conn;
             this.stream = stream;
         }
 
-        /*
-         * Initialises the fastpath system
-         *
-         * @param conn BaseConnection to attach to
-         * @param stream The network stream to the backend
-         */
-
+        /// <summary>
+        /// Initialises the fastpath system.
+        /// </summary>
+        /// <param name="conn">BaseConnection to attach to.</param>
         public Fastpath(NpgsqlConnection conn)
         {
             this.conn = conn;
@@ -81,28 +81,18 @@ namespace NpgsqlTypes
             this.stream = conn.Connector.Stream;
         }
 
-        /*
-         * Send a function call to the PostgreSQL backend
-         *
-         * @param fnid Function id
-         * @param resulttype True if the result is an integer, false for other results
-         * @param args FastpathArguments to pass to fastpath
-         * @return null if no data, Integer if an integer result, or byte[] otherwise
-         * @exception NpgsqlException if a database-access error occurs.
-         */
-
+        /// <summary>
+        /// Send a function call to the PostgreSQL backend.
+        /// </summary>
+        /// <param name="fnid">Function id.</param>
+        /// <param name="resulttype">True if the result is an integer, false for other results.</param>
+        /// <param name="args">FastpathArguments to pass to fastpath.</param>
+        /// <returns>null if no data, Integer if an integer result, or byte[] otherwise.</returns>
         public Object FastpathCall(Int32 fnid, Boolean resulttype, FastpathArg[] args)
         {
             try
             {
-                if (conn.BackendProtocolVersion == ProtocolVersion.Version3)
-                {
-                    return FastpathV3(fnid, resulttype, args);
-                }
-                else
-                {
-                    return FastpathV2(fnid, resulttype, args);
-                }
+                return FastpathV3(fnid, resulttype, args);
             }
             catch (IOException)
             {
@@ -170,7 +160,7 @@ namespace NpgsqlTypes
                             //------------------------------
                             // Error message returned
                         case 'E':
-                            NpgsqlError e = new NpgsqlError(conn.BackendProtocolVersion, stream);
+                            NpgsqlError e = new NpgsqlError(stream);
                             throw new NpgsqlException(e.ToString());
 
                             //------------------------------
@@ -178,7 +168,7 @@ namespace NpgsqlTypes
                         case 'N':
                             Int32 l_nlen = PGUtil.ReadInt32(stream);
 
-                            conn.Connector.FireNotice(new NpgsqlError(conn.BackendProtocolVersion, stream));
+                            conn.Connector.FireNotice(new NpgsqlError(stream));
 
                             break;
 
@@ -246,148 +236,29 @@ namespace NpgsqlTypes
             }
         }
 
-        private Object FastpathV2(Int32 fnid, Boolean resulttype, FastpathArg[] args)
-        {
-            // added Oct 7 1998 to give us thread safety
-            lock (stream)
-            {
-                // send the function call
-
-                stream
-                    .WriteBytesNullTerminated((byte)ASCIIBytes.F)
-                    .WriteInt32(fnid)
-                    .WriteInt32(args.Length);
-
-                for (Int32 i = 0; i < args.Length; i++)
-                {
-                    args[i].Send(stream);
-                }
-
-                // This is needed, otherwise data can be lost
-                stream.Flush();
-
-                // Now handle the result
-
-                // Now loop, reading the results
-                Object result = null; // our result
-                String errorMessage = "";
-                Int32 c;
-                Boolean l_endQuery = false;
-                while (!l_endQuery)
-                {
-                    c = (Char) stream.ReadByte();
-
-                    switch (c)
-                    {
-                        case 'A': // Asynchronous Notify
-                            //TODO: do something with this
-                            Int32 pid = PGUtil.ReadInt32(stream);
-                            String msg = PGUtil.ReadString(stream);
-
-                            break;
-
-                            //------------------------------
-                            // Error message returned
-                        case 'E':
-                            NpgsqlError e = new NpgsqlError(conn.BackendProtocolVersion, stream);
-                            errorMessage += e.Message;
-                            break;
-
-                            //------------------------------
-                            // Notice from backend
-                        case 'N':
-                            NpgsqlError notice = new NpgsqlError(conn.BackendProtocolVersion, stream);
-                            errorMessage += notice.Message;
-                            break;
-
-                        case 'V':
-                            Char l_nextChar = (Char) stream.ReadByte();
-                            if (l_nextChar == 'G')
-                            {
-                                Int32 sz = PGUtil.ReadInt32(stream);
-                                // Return an Integer if
-                                if (resulttype)
-                                {
-                                    result = PGUtil.ReadInt32(stream);
-                                }
-                                else
-                                {
-                                    Byte[] buf = new Byte[sz];
-
-                                    Int32 bytes_from_stream = 0;
-                                    Int32 total_bytes_read = 0;
-                                    Int32 size = sz;
-                                    do
-                                    {
-                                        bytes_from_stream = stream.Read(buf, total_bytes_read, size);
-                                        total_bytes_read += bytes_from_stream;
-                                        size -= bytes_from_stream;
-                                    }
-                                    while (size > 0);
-
-                                    result = buf;
-                                }
-                                //There should be a trailing '0'
-                                Int32 l_endChar = (Char) stream.ReadByte();
-                            }
-                            else
-                            {
-                                //it must have been a '0', thus no results
-                            }
-                            break;
-
-                        case 'Z':
-                            l_endQuery = true;
-                            break;
-
-                        default:
-                            throw new NpgsqlException(string.Format("postgresql.fp.protocol {0}", c));
-                    }
-                }
-
-                if (errorMessage != null)
-                {
-                    throw new NpgsqlException("postgresql.fp.error" + errorMessage);
-                }
-
-                return result;
-            }
-        }
-
-        /*
-         * Send a function call to the PostgreSQL backend by name.
-         *
-         * Note: the mapping for the procedure name to function id needs to exist,
-         * usually to an earlier call to addfunction().
-         *
-         * This is the prefered method to call, as function id's can/may change
-         * between versions of the backend.
-         *
-         * For an example of how this works, refer to org.postgresql.largeobject.LargeObject
-         *
-         * @param name Function name
-         * @param resulttype True if the result is an integer, false for other
-         * results
-         * @param args FastpathArguments to pass to fastpath
-         * @return null if no data, Integer if an integer result, or byte[] otherwise
-         * @exception NpgsqlException if name is unknown or if a database-access error
-         * occurs.
-         * @see org.postgresql.largeobject.LargeObject
-         */
-
+        /// <summary>
+        /// Send a function call to the PostgreSQL backend by name.
+        /// Note: the mapping for the procedure name to function id needs to exist,
+        /// usually to an earlier call to addfunction().
+        /// This is the prefered method to call, as function id's can/may change
+        /// between versions of the backend.
+        /// For an example of how this works, refer to NpgsqlTypes.LargeObject
+        /// </summary>
+        /// <param name="name">Function name.</param>
+        /// <param name="resulttype">True if the result is an integer, false for other results.</param>
+        /// <param name="args">FastpathArguments to pass to fastpath.</param>
+        /// <returns>null if no data, Integer if an integer result, or byte[] otherwise.</returns>
         public Object FastpathCall(String name, Boolean resulttype, FastpathArg[] args)
         {
             return FastpathCall(GetID(name), resulttype, args);
         }
 
-        /*
-         * This convenience method assumes that the return value is an Integer
-         * @param name Function name
-         * @param args Function arguments
-         * @return integer result
-         * @exception NpgsqlException if a database-access error occurs or no result
-         */
-
+        /// <summary>
+        /// This convenience method assumes that the return value is an Integer.
+        /// </summary>
+        /// <param name="name">Function name.</param>
+        /// <param name="args">Function arguments.</param>
+        /// <returns>Integer result.</returns>
         public Int32 GetInteger(String name, FastpathArg[] args)
         {
             Int32 i = (Int32) FastpathCall(name, true, args);
@@ -395,69 +266,53 @@ namespace NpgsqlTypes
             return i;
         }
 
-        /*
-         * This convenience method assumes that the return value is an Integer
-         * @param name Function name
-         * @param args Function arguments
-         * @return byte[] array containing result
-         * @exception NpgsqlException if a database-access error occurs or no result
-         */
-
+        /// <summary>
+        /// This convenience method assumes that the return value is an Integer.
+        /// </summary>
+        /// <param name="name">Function name.</param>
+        /// <param name="args">Function arguments.</param>
+        /// <returns>Array containing result</returns>
         public Byte[] GetData(String name, FastpathArg[] args)
         {
             return (Byte[]) FastpathCall(name, false, args);
         }
 
-        /*
-         * This adds a function to our lookup table.
-         *
-         * <p>User code should use the addFunctions method, which is based upon a
-         * query, rather than hard coding the oid. The oid for a function is not
-         * guaranteed to remain static, even on different servers of the same
-         * version.
-         *
-         * @param name Function name
-         * @param fnid Function id
-         */
-
+        /// <summary>
+        /// This adds a function to our lookup table.
+        /// User code should use the addFunctions method, which is based upon a
+        /// query, rather than hard coding the oid. The oid for a function is not
+        /// guaranteed to remain static, even on different servers of the same
+        /// version.
+        /// </summary>
+        /// <param name="name">Function name.</param>
+        /// <param name="fnid">Function id.</param>
         public void AddFunction(String name, Int32 fnid)
         {
             func.Add(name, fnid);
         }
 
-        /*
-         * This takes a ResultSet containing two columns. Column 1 contains the
-         * function name, Column 2 the oid.
-         *
-         * <p>It reads the entire ResultSet, loading the values into the function
-         * table.
-         *
-         * <p><b>REMEMBER</b> to close() the resultset after calling this!!
-         *
-         * <p><b><em>Implementation note about function name lookups:</em></b>
-         *
-         * <p>PostgreSQL stores the function id's and their corresponding names in
-         * the pg_proc table. To speed things up locally, instead of querying each
-         * function from that table when required, a Dictionary is used. Also, only
-         * the function's required are entered into this table, keeping connection
-         * times as fast as possible.
-         *
-         * <p>The org.postgresql.largeobject.LargeObject class performs a query upon it's startup,
-         * and passes the returned ResultSet to the addFunctions() method here.
-         *
-         * <p>Once this has been done, the LargeObject api refers to the functions by
-         * name.
-         *
-         * <p>Dont think that manually converting them to the oid's will work. Ok,
-         * they will for now, but they can change during development (there was some
-         * discussion about this for V7.0), so this is implemented to prevent any
-         * unwarranted headaches in the future.
-         *
-         * @param rs ResultSet
-         * @exception NpgsqlException if a database-access error occurs.
-         * @see org.postgresql.largeobject.LargeObjectManager
-         */
-
+        /// <summary>
+        /// This takes a ResultSet containing two columns. Column 1 contains the
+        /// function name, Column 2 the oid.
+        /// It reads the entire ResultSet, loading the values into the function
+        /// table.
+        /// REMEMBER to close() the resultset after calling this!!
+        /// Implementation note about function name lookups:
+        /// PostgreSQL stores the function id's and their corresponding names in
+        /// the pg_proc table. To speed things up locally, instead of querying each
+        /// function from that table when required, a Dictionary is used. Also, only
+        /// the function's required are entered into this table, keeping connection
+        /// times as fast as possible.
+        /// The org.postgresql.largeobject.LargeObject class performs a query upon it's startup,
+        /// and passes the returned ResultSet to the addFunctions() method here.
+        /// Once this has been done, the LargeObject api refers to the functions by
+        /// name.
+        /// Dont think that manually converting them to the oid's will work. Ok,
+        /// they will for now, but they can change during development (there was some
+        /// discussion about this for V7.0), so this is implemented to prevent any
+        /// unwarranted headaches in the future.
+        /// </summary>
+        /// <param name="rs">ResultSet</param>
         public void AddFunctions(IDataReader rs)
         {
             while (rs.Read())
@@ -470,17 +325,13 @@ namespace NpgsqlTypes
             }
         }
 
-        /*
-         * This returns the function id associated by its name
-         *
-         * <p>If addFunction() or addFunctions() have not been called for this name,
-         * then an NpgsqlException is thrown.
-         *
-         * @param name Function name to lookup
-         * @return Function ID for fastpath call
-         * @exception NpgsqlException is function is unknown.
-         */
-
+        /// <summary>
+        /// This returns the function id associated by its name
+        /// If addFunction() or addFunctions() have not been called for this name,
+        /// then an NpgsqlException is thrown.
+        /// </summary>
+        /// <param name="name">Function name to lookup.</param>
+        /// <returns>Function ID for fastpath call.</returns>
         public Int32 GetID(String name)
         {
             return func[name];

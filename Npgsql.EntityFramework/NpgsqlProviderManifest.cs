@@ -28,6 +28,12 @@ namespace Npgsql
             {
                 xmlReader = CreateXmlReaderForResource("Npgsql.NpgsqlSchema.ssdl");
             }
+#if NET45
+            else if (informationType == StoreSchemaDefinitionVersion3)
+            {
+                xmlReader = CreateXmlReaderForResource("Npgsql.NpgsqlSchemaV3.ssdl");
+            }
+#endif
             else if (informationType == StoreSchemaMapping)
             {
                 xmlReader = CreateXmlReaderForResource("Npgsql.NpgsqlSchema.msl");
@@ -139,6 +145,10 @@ namespace Npgsql
                             return TypeUsage.CreateBinaryTypeUsage(primitiveType, false, (int)facet.Value);
                         }
                         return TypeUsage.CreateBinaryTypeUsage(primitiveType, false);
+                    }
+                case "rowversion":
+                    {
+                        return TypeUsage.CreateBinaryTypeUsage(primitiveType, true, 8);
                     }
                     //TypeUsage.CreateBinaryTypeUsage
                     //TypeUsage.CreateDateTimeTypeUsage
@@ -256,9 +266,9 @@ namespace Npgsql
                     }
                 case PrimitiveTypeKind.Guid:
                     return TypeUsage.CreateDefaultTypeUsage(StoreTypeNameToStorePrimitiveType["uuid"]);
-                // notably missing
-                // PrimitiveTypeKind.Byte:
-                // PrimitiveTypeKind.SByte:
+                case PrimitiveTypeKind.Byte:
+                case PrimitiveTypeKind.SByte: 
+                    return TypeUsage.CreateDefaultTypeUsage(StoreTypeNameToStorePrimitiveType["int2"]);
             }
 
             throw new NotSupportedException();
@@ -278,9 +288,14 @@ namespace Npgsql
 
         public override string EscapeLikeArgument(string argument)
         {
-            return argument.Replace("%", "\\%").Replace("_", "\\_");
+            return argument.Replace("\\","\\\\").Replace("%", "\\%").Replace("_", "\\_");
         }
 #endif
-
+#if ENTITIES6
+        public override bool SupportsInExpression()
+        {
+            return true;
+        }
+#endif
     }
 }

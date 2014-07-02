@@ -288,7 +288,7 @@ namespace NpgsqlTypes
             // text but which are not really text.  Those types cause problems if they are encoded as binary.
             // The mapping NpgsqlDbType.Text => text_nonbinary is removed when text is mapped.
             // DBType.Object will be re-mapped to this type at the end.
-            nativeTypeMapping.AddType("text_nonbinary", NpgsqlDbType.Text, DbType.Object, true);
+            nativeTypeMapping.AddType("unknown", NpgsqlDbType.Text, DbType.Object, true);
 
             nativeTypeMapping.AddType("text", NpgsqlDbType.Text, DbType.String, false,
                                             BasicNativeToBackendTypeConverter.StringToTextText,
@@ -439,7 +439,9 @@ namespace NpgsqlTypes
             nativeTypeMapping.AddType("uuid", NpgsqlDbType.Uuid, DbType.Guid, true);
             nativeTypeMapping.AddTypeAlias("uuid", typeof (Guid));
 
-            nativeTypeMapping.AddType("xml", NpgsqlDbType.Xml, DbType.Xml, true);
+            nativeTypeMapping.AddType("xml", NpgsqlDbType.Xml, DbType.Xml, false,
+                                            BasicNativeToBackendTypeConverter.StringToTextText,
+                                            BasicNativeToBackendTypeConverter.StringToTextBinary);
 
             nativeTypeMapping.AddType("interval", NpgsqlDbType.Interval, DbType.Object, true,
                                             ExtendedNativeToBackendTypeConverter.ToInterval);
@@ -447,7 +449,19 @@ namespace NpgsqlTypes
             nativeTypeMapping.AddTypeAlias("interval", typeof (NpgsqlInterval));
             nativeTypeMapping.AddTypeAlias("interval", typeof (TimeSpan));
 
-            nativeTypeMapping.AddDbTypeAlias("text_nonbinary", DbType.Object);
+            nativeTypeMapping.AddType("json", NpgsqlDbType.Json, DbType.Object, false,
+                BasicNativeToBackendTypeConverter.StringToTextText,
+                BasicNativeToBackendTypeConverter.StringToTextBinary);
+
+            nativeTypeMapping.AddType("jsonb", NpgsqlDbType.Jsonb, DbType.Object, false,
+                BasicNativeToBackendTypeConverter.StringToTextText,
+                BasicNativeToBackendTypeConverter.StringToTextBinary);
+
+            nativeTypeMapping.AddType("hstore", NpgsqlDbType.Hstore, DbType.Object, false,
+                BasicNativeToBackendTypeConverter.StringToTextText,
+                BasicNativeToBackendTypeConverter.StringToTextBinary);
+
+            nativeTypeMapping.AddDbTypeAlias("unknown", DbType.Object);
 
             return nativeTypeMapping;
         }
@@ -567,6 +581,18 @@ namespace NpgsqlTypes
                                             ExtendedBackendToNativeTypeConverter.ToGuid);
 
             yield return new NpgsqlBackendTypeInfo(0, "xml", NpgsqlDbType.Xml, DbType.Xml, typeof (String), null);
+
+            yield return new NpgsqlBackendTypeInfo(0, "json", NpgsqlDbType.Json, DbType.Object, typeof(String),
+                null,
+                BasicBackendToNativeTypeConverter.TextBinaryToString);
+
+            yield return new NpgsqlBackendTypeInfo(0, "jsonb", NpgsqlDbType.Jsonb, DbType.Object, typeof(String),
+                null,
+                BasicBackendToNativeTypeConverter.TextBinaryToString);
+
+            yield return new NpgsqlBackendTypeInfo(0, "hstore", NpgsqlDbType.Hstore, DbType.Object, typeof(String),
+                null,
+                BasicBackendToNativeTypeConverter.TextBinaryToString);
 
             if (useExtendedTypes)
             {

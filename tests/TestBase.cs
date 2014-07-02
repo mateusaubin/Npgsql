@@ -35,6 +35,7 @@ using NUnit.Framework;
 
 namespace NpgsqlTests
 {
+    [TestFixture("9.4")]
     [TestFixture("9.3")]
     [TestFixture("9.2")]
     [TestFixture("9.1")]
@@ -69,6 +70,27 @@ namespace NpgsqlTests
         protected virtual string ConnectionString { get { return _connectionString; } }
         private string _connectionString;
 
+
+        /// <summary>
+        /// New ConectionString property crafted to change the database name from original TestBase.ConnectionString to append a "_ef" suffix.
+        /// i.e.: the TestBase.ConnectionString database is npgsql_tests. Entity Framework database will be npgsql_tests_ef.
+        /// </summary>
+        protected virtual string ConnectionStringEF
+        {
+            get
+            {
+                if (connectionStringEF == null)
+                {
+                    //Reuse all strings just add _ef at end of database name for 
+                    var connectionSB = new NpgsqlConnectionStringBuilder(ConnectionString);
+                    connectionSB.Database += "_ef";
+                    connectionStringEF = connectionSB.ConnectionString;
+                }
+                return connectionStringEF;
+            }
+        }
+        private string connectionStringEF;
+
         /// <summary>
         /// Unless the NPGSQL_TEST_DB environment variable is defined, this is used as the connection string for the
         /// test database.
@@ -84,7 +106,7 @@ namespace NpgsqlTests
         #region Setup / Teardown
 
         [TestFixtureSetUp]
-        public void TestFixtureSetup()
+        public virtual void TestFixtureSetup()
         {
             var connStringEnvVar = "NPGSQL_TEST_DB_" + BackendVersion;
             _connectionString = Environment.GetEnvironmentVariable(connStringEnvVar);
@@ -186,7 +208,6 @@ namespace NpgsqlTests
                     }
                 }
             }
-
             ExecuteNonQuery(@"CREATE TABLE data (
                                 field_pk                      SERIAL PRIMARY KEY,
                                 field_serial                  SERIAL,
@@ -214,7 +235,39 @@ namespace NpgsqlTests
                                 field_polygon                 POLYGON,
                                 field_circle                  CIRCLE
                                 ) WITH OIDS");
+
+            if (Conn.PostgreSqlVersion >= new Version(9, 1))
+            {
+                CreateSchema("hstore");
+                ExecuteNonQuery(@"CREATE EXTENSION IF NOT EXISTS hstore WITH SCHEMA hstore");
+                ExecuteNonQuery(@"ALTER TABLE data ADD COLUMN field_hstore hstore.HSTORE");
+            }
+
+            if (Conn.PostgreSqlVersion >= new Version(9, 2))
+            {
+                ExecuteNonQuery(@"ALTER TABLE data ADD COLUMN field_json JSON");
+            }
+
+            if (Conn.PostgreSqlVersion >= new Version(9, 4))
+            {
+                ExecuteNonQuery(@"ALTER TABLE data ADD COLUMN field_jsonb JSONB");
+            }
+
             _schemaCreated = true;
+        }
+
+        private void CreateSchema(string schemaName)
+        {
+            if (Conn.PostgreSqlVersion >= new Version(9, 3))
+                ExecuteNonQuery(String.Format("CREATE SCHEMA IF NOT EXISTS {0}", schemaName));
+            else
+            {
+                try { ExecuteNonQuery(String.Format("CREATE SCHEMA {0}", schemaName)); }
+                catch (NpgsqlException e) {
+                    if (e.Code != "42P06")
+                        throw;
+                }
+            }
         }
 
         /// <summary>

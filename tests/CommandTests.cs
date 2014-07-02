@@ -28,6 +28,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 using Npgsql;
 using NUnit.Framework;
 using System.Data;
@@ -1249,6 +1250,36 @@ namespace NpgsqlTests
         }
 
         [Test]
+        public void ProviderDateTimeSupportTimezone4()
+        {
+            ExecuteNonQuery("SET TIME ZONE 5"); //Should not be equal to your local time zone !
+
+            NpgsqlTimeStampTZ tsInsert = new NpgsqlTimeStampTZ(2014, 3, 28, 10, 0, 0, NpgsqlTimeZone.UTC);
+            
+            using (var command = new NpgsqlCommand("INSERT INTO data(field_timestamp_with_timezone) VALUES (:p1)", Conn))
+            {
+                var p1 = command.Parameters.Add("p1", NpgsqlDbType.TimestampTZ);
+                p1.Direction = ParameterDirection.Input;
+                p1.Value = tsInsert;
+                
+                command.ExecuteNonQuery();
+            }
+            
+
+            using (var command = new NpgsqlCommand("SELECT field_timestamp_with_timezone FROM data", Conn))
+            {
+                NpgsqlTimeStampTZ tsSelect;
+                using (var reader = command.ExecuteReader())
+                {
+                    reader.Read();
+                    tsSelect = reader.GetTimeStampTZ(0);
+                }
+
+                Assert.AreEqual(tsInsert.AtTimeZone(NpgsqlTimeZone.UTC), tsSelect.AtTimeZone(NpgsqlTimeZone.UTC));
+            }
+        }
+
+        [Test]
         public void DoubleValueSupportWithExtendedQuery()
         {
             ExecuteNonQuery("INSERT INTO data(field_float8) VALUES (.123456789012345)");
@@ -1699,6 +1730,38 @@ namespace NpgsqlTests
             Assert.AreEqual(3, circle.Center.Y);
             Assert.AreEqual(5, circle.Radius);
         }
+
+        [Test]
+        public void TestXmlParameter()
+        {
+            TestXmlParameter_Internal(false);
+        }
+
+        [Test]
+        public void TestXmlParameterPrepared()
+        {
+            TestXmlParameter_Internal(true);
+        }
+
+        
+        private void TestXmlParameter_Internal(bool prepare)
+        {
+            using (var command = new NpgsqlCommand("select @PrecisionXML", Conn))
+            {
+                var sXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?> <strings type=\"array\"> <string> this is a test with ' single quote </string></strings>";
+                var parameter = command.CreateParameter();
+                parameter.DbType = DbType.Xml;  // To make it work we need to use DbType.String; and then CAST it in the sSQL: cast(@PrecisionXML as xml)
+                parameter.ParameterName = "@PrecisionXML";
+                parameter.Value = sXML;
+                command.Parameters.Add(parameter);
+
+                if (prepare)
+                    command.Prepare();
+                command.ExecuteScalar();
+            }
+
+        }
+
 
         [Test]
         public void SetParameterValueNull()
@@ -2245,11 +2308,51 @@ namespace NpgsqlTests
         }
 
         [Test]
-        public void GreaterThanInQueryStringWithPrepare()
+        public void LessThanParamNoWhitespaceBetween()
         {
-            var command = new NpgsqlCommand("select count(*) from data where field_serial >:param1", Conn);
+            OperatorParamNoWhitespaceBetween("<", false);
+        }
+
+        [Test]
+        public void LessThanParamNoWhitespaceBetweenWithPrepare()
+        {
+            OperatorParamNoWhitespaceBetween("<", true);
+        }
+
+        [Test]
+        public void GreaterThanParamNoWhitespaceBetween()
+        {
+            OperatorParamNoWhitespaceBetween(">", false);
+        }
+
+        [Test]
+        public void GreaterThanParamNoWhitespaceBetweenWithPrepare()
+        {
+            OperatorParamNoWhitespaceBetween(">", true);
+        }
+
+        [Test]
+        public void NotEqualThanParamNoWhitespaceBetween()
+        {
+            OperatorParamNoWhitespaceBetween("<>", false);
+        }
+
+        [Test]
+        public void NotEqualThanParamNoWhitespaceBetweenWithPrepare()
+        {
+            OperatorParamNoWhitespaceBetween("<>", true);
+        }
+
+        private void OperatorParamNoWhitespaceBetween(string op, bool prepare)
+        {
+            var command = new NpgsqlCommand(string.Format("select 1{0}:param1", op), Conn);
             command.Parameters.AddWithValue(":param1", 1);
-            command.Prepare();
+
+            if (prepare)
+            {
+                command.Prepare();
+            }
+
             command.ExecuteScalar();
         }
 
@@ -2339,6 +2442,20 @@ namespace NpgsqlTests
         }
 
         [Test]
+        public void ParameterExplicitType2DbTypeObjectTypeFirst()
+        {
+            using (var command = new NpgsqlCommand(@"SELECT * FROM data WHERE field_date=:param", Conn))
+            {
+                var sqlParam = command.CreateParameter();
+                sqlParam.ParameterName = "param";
+                sqlParam.DbType = DbType.Object;
+                sqlParam.Value = "2008-1-1";
+                command.Parameters.Add(sqlParam);
+                command.ExecuteScalar();
+            }
+        }
+
+        [Test]
         public void ParameterExplicitType2DbTypeObjectWithPrepare()
         {
             using (var command = new NpgsqlCommand(@"SELECT * FROM data WHERE field_date=:param", Conn))
@@ -2347,6 +2464,21 @@ namespace NpgsqlTests
                 sqlParam.ParameterName = "param";
                 sqlParam.Value = "2008-1-1";
                 sqlParam.DbType = DbType.Object;
+                command.Parameters.Add(sqlParam);
+                command.Prepare();
+                command.ExecuteScalar();
+            }
+        }
+
+        [Test]
+        public void ParameterExplicitType2DbTypeObjectWithPrepareTypeFirst()
+        {
+            using (var command = new NpgsqlCommand(@"SELECT * FROM data WHERE field_date=:param", Conn))
+            {
+                var sqlParam = command.CreateParameter();
+                sqlParam.ParameterName = "param";
+                sqlParam.DbType = DbType.Object;
+                sqlParam.Value = "2008-1-1";
                 command.Parameters.Add(sqlParam);
                 command.Prepare();
                 command.ExecuteScalar();
@@ -2371,6 +2503,34 @@ namespace NpgsqlTests
                 command.Parameters.Add(sqlParam);
 
                 command.Prepare();
+                command.ExecuteScalar();
+            }
+        }
+
+        [Test]
+        public void ParameterExplicitType2DbTypeObjectInt()
+        {
+            using (var command = new NpgsqlCommand(@"SELECT * FROM data WHERE field_int4=:param", Conn))
+            {
+                var sqlParam = command.CreateParameter();
+                sqlParam.ParameterName = "param";
+                sqlParam.DbType = DbType.Object;
+                sqlParam.Value = 1;
+                command.Parameters.Add(sqlParam);
+                command.ExecuteScalar();
+            }
+        }
+
+        [Test]
+        public void ParameterExplicitType2DbTypeObjectIntTypeFirst()
+        {
+            using (var command = new NpgsqlCommand(@"SELECT * FROM data WHERE field_int4=:param", Conn))
+            {
+                var sqlParam = command.CreateParameter();
+                sqlParam.ParameterName = "param";
+                sqlParam.DbType = DbType.Object;
+                sqlParam.Value = 1;
+                command.Parameters.Add(sqlParam);
                 command.ExecuteScalar();
             }
         }
@@ -3433,6 +3593,111 @@ namespace NpgsqlTests
         }
 
         [Test]
+        public void Bug188BufferNpgsqlCopySerializer()
+        {
+            var cmd = new NpgsqlCommand("COPY data (field_int4, field_text) FROM STDIN", Conn);
+            var npgsqlCopySerializer = new NpgsqlCopySerializer(Conn);
+            var npgsqlCopyIn = new NpgsqlCopyIn(cmd, Conn, npgsqlCopySerializer.ToStream);
+
+            string str = "Very long string".PadRight(NpgsqlCopySerializer.DEFAULT_BUFFER_SIZE, 'z');
+
+            npgsqlCopyIn.Start();
+            npgsqlCopySerializer.AddInt32(12345678);
+            npgsqlCopySerializer.AddString(str);
+            npgsqlCopySerializer.EndRow();
+            npgsqlCopySerializer.Flush();
+            npgsqlCopyIn.End();
+
+
+
+            NpgsqlDataReader dr = new NpgsqlCommand("select field_int4, field_text from data", Conn).ExecuteReader();
+            dr.Read();
+
+            Assert.AreEqual(12345678, dr[0]);
+            Assert.AreEqual(str, dr[1]);
+        }
+
+        [Test]
+        public void Bug219NpgsqlCopyInConcurrentUsage()
+        {
+
+            try
+            {
+                // Create temporary test tables
+
+                ExecuteNonQuery(@"CREATE TABLE Bug219_table1 (
+                                            id integer,
+                                            name character varying(100)
+                                            )
+                                            WITH (
+                                            OIDS=FALSE
+                                            );");
+
+                ExecuteNonQuery(@"CREATE TABLE Bug219_table2 (
+                                            id integer,
+                                            null1 integer,
+                                            name character varying(100),
+                                            null2 integer,
+                                            description character varying(1000),
+                                            null3 integer
+                                            )
+                                            WITH (
+                                            OIDS=FALSE
+                                            );");
+
+
+
+                using (var connection1 = new NpgsqlConnection(ConnectionString))
+                using (var connection2 = new NpgsqlConnection(ConnectionString))
+                {
+
+                    connection1.Open();
+                    connection2.Open();
+
+                    var copy1 = new NpgsqlCopyIn("COPY Bug219_table1 FROM STDIN;", connection1);
+                    var copy2 = new NpgsqlCopyIn("COPY Bug219_table2 FROM STDIN;", connection2);
+
+                    copy1.Start();
+                    copy2.Start();
+
+                    NpgsqlCopySerializer cs1 = new NpgsqlCopySerializer(connection1);
+                    //NpgsqlCopySerializer cs2 = new NpgsqlCopySerializer(connection2);
+
+                    for (int index = 0; index < 10; index++)
+                    {
+                        cs1.AddInt32(index);
+                        cs1.AddString(string.Format("Index {0} ", index));
+                        cs1.EndRow();
+
+                        /*cs2.AddInt32(index);
+                        cs2.AddNull();
+                        cs2.AddString(string.Format("Index {0} ", index));
+                        cs2.AddNull();
+                        cs2.AddString("jjjjj");
+                        cs2.AddNull();
+                        cs2.EndRow();*/
+
+                    }
+                    cs1.Close(); //Exception
+                    //cs2.Close();
+
+                    copy1.End();
+                    copy2.End();
+
+                }
+            }
+            catch (Exception)
+            {
+                throw;
+            }
+            finally
+            {
+                ExecuteNonQuery(@"DROP TABLE IF EXISTS Bug219_table1");
+                ExecuteNonQuery(@"DROP TABLE IF EXISTS Bug219_table2");
+            }
+        }
+
+        [Test]
         public void DataTypeTests()
         {
             // Test all types according to this table:
@@ -3547,6 +3812,130 @@ namespace NpgsqlTests
             NpgsqlCommand cmd = new NpgsqlCommand("SELECT 'cat'::tsquery <@ 'cat & rat'::tsquery", Conn);
 
             Assert.IsTrue((bool)cmd.ExecuteScalar());
+        }
+
+        [Test]
+        public void Bug184RollbackFailsOnAbortedTransaction()
+        {
+            NpgsqlConnectionStringBuilder csb = new NpgsqlConnectionStringBuilder(ConnectionString);
+            csb.CommandTimeout = 100000;
+
+            using (NpgsqlConnection connTimeoutChanged = new NpgsqlConnection(csb.ToString()))
+            {
+                connTimeoutChanged.Open();
+                using (var t = connTimeoutChanged.BeginTransaction())
+                {
+                    try
+                    {
+                        var command = new NpgsqlCommand("select count(*) from dta", connTimeoutChanged);
+                        command.Transaction = t;
+                        Object result = command.ExecuteScalar();
+
+
+                    }
+                    catch (Exception)
+                    {
+
+                        t.Rollback();
+                    }
+
+                }
+
+            }
+        }
+
+        [Test]
+        public void TestCommentInQuery01()
+        {
+            using (var command = new NpgsqlCommand("-- 1\n-- 2; abc\n-- 3;", Conn))
+            {
+                Assert.AreEqual(null, command.ExecuteScalar());
+            }
+        }
+
+        [Test]
+        public void TestCommentInQuery02()
+        {
+            using (var command = new NpgsqlCommand("select -- lc;lc\r\n1", Conn))
+            {
+                Assert.AreEqual(1, command.ExecuteScalar());
+            }
+        }
+
+        [Test]
+        public void TestCommentInQuery03()
+        {
+            using (var command = new NpgsqlCommand("select -- lc;lc /* lc;lc */\r\n1", Conn))
+            {
+                Assert.AreEqual(1, command.ExecuteScalar());
+            }
+        }
+
+        [Test]
+        public void TestIEnumerableAsArray()
+        {
+            using (var command = new NpgsqlCommand("SELECT :array", Conn))
+            {
+                var expected = new[] { 1, 2, 3, 4 };
+                command.Parameters.AddWithValue("array", expected.Select(x => x));
+                var res = command.ExecuteScalar() as int[];
+
+                Assert.NotNull(res);
+                CollectionAssert.AreEqual(expected, res);
+            }
+        }
+
+        [Test]
+        public void InsertJsonValueDataType()
+        {
+            if (Conn.PostgreSqlVersion < new Version(9, 2))
+                Assert.Ignore("json data type only introduced in 9.2");
+            using (var cmd = new NpgsqlCommand("INSERT INTO data (field_json) VALUES (:param)", Conn))
+            {
+                cmd.Parameters.AddWithValue("param", @"{ ""Key"" : ""Value"" }");
+                cmd.Parameters[0].NpgsqlDbType = NpgsqlDbType.Json;
+                Assert.That(cmd.ExecuteNonQuery(), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void InsertJsonbValueDataType()
+        {
+            if (Conn.PostgreSqlVersion < new Version(9, 4))
+                Assert.Ignore("json data type only introduced in 9.4 (we're on {0})", Conn.PostgreSqlVersion);
+            using (var cmd = new NpgsqlCommand("INSERT INTO data (field_jsonb) VALUES (:param)", Conn))
+            {
+                cmd.Parameters.AddWithValue("param", @"{ ""Key"" : ""Value"" }");
+                cmd.Parameters[0].NpgsqlDbType = NpgsqlDbType.Jsonb;
+                Assert.That(cmd.ExecuteNonQuery(), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void InsertHstoreValueDataType()
+        {
+            if (Conn.PostgreSqlVersion < new Version(9, 1))
+                Assert.Ignore("Loading the hstore extension in pre-9.1 is too complicated");
+            ExecuteNonQuery(@"SET search_path = public, hstore");
+            using (var cmd = new NpgsqlCommand("INSERT INTO data (field_hstore) VALUES (:param)", Conn))
+            {
+                cmd.Parameters.AddWithValue("param", @"""a"" => 3, ""b"" => 4");
+                cmd.Parameters[0].NpgsqlDbType = NpgsqlDbType.Hstore;
+                Assert.That(cmd.ExecuteNonQuery(), Is.EqualTo(1));
+            }
+        }
+
+        public void TestEmptyIEnumerableAsArray()
+        {
+            using (var command = new NpgsqlCommand("SELECT :array", Conn))
+            {
+                var expected = new[] { 1, 2, 3, 4 };
+                command.Parameters.AddWithValue("array", expected.Where(x => false));
+                var res = command.ExecuteScalar() as int[];
+
+                Assert.NotNull(res);
+                Assert.AreEqual(0, res.Length);
+            }
         }
     }
 }

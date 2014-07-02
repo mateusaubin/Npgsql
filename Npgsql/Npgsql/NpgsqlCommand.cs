@@ -58,8 +58,7 @@ namespace Npgsql
         {
             NotPrepared,
             NeedsPrepare,
-            V2Prepared,
-            V3Prepared
+            Prepared
         }
 
         // Logging related values
@@ -272,6 +271,9 @@ namespace Npgsql
             }
         }
 
+        /// <summary>
+        /// DB connection.
+        /// </summary>
         protected override DbConnection DbConnection
         {
             get { return Connection; }
@@ -349,6 +351,9 @@ namespace Npgsql
 
         internal Type[] ExpectedTypes { get; set; }
 
+        /// <summary>
+        /// DB parameter collection.
+        /// </summary>
         protected override DbParameterCollection DbParameterCollection
         {
             get { return Parameters; }
@@ -371,6 +376,9 @@ namespace Npgsql
             }
         }
 
+        /// <summary>
+        /// DB transaction.
+        /// </summary>
         protected override DbTransaction DbTransaction
         {
             get { return Transaction; }
@@ -578,6 +586,9 @@ namespace Npgsql
             return new NpgsqlException(resman.GetString("Exception_ConnectionBroken"), e);
         }
 
+        /// <summary>
+        /// Design time visible.
+        /// </summary>
         public override bool DesignTimeVisible
         {
             get { return designTimeVisible; }

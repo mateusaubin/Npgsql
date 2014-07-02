@@ -83,9 +83,14 @@ namespace Npgsql
         {
             NpgsqlEventLog.LogMsg(resman, "Log_ExceptionOccured", LogLevel.Normal, Message);
 
-            errors = new NpgsqlError[] { new NpgsqlError(ProtocolVersion.Unknown, message) };
+            errors = new NpgsqlError[] { new NpgsqlError(message) };
         }
 
+        /// <summary>
+        /// Get object data.
+        /// </summary>
+        /// <param name="info"></param>
+        /// <param name="context"></param>
         public override void GetObjectData(SerializationInfo info, StreamingContext context)
         {
             base.GetObjectData(info, context);

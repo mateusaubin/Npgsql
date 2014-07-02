@@ -60,27 +60,21 @@ namespace Npgsql
             _conn = conn;
             _isolation = isolation;
 
-            StringBuilder commandText = new StringBuilder("BEGIN; SET TRANSACTION ISOLATION LEVEL ");
-
             if (isolation == IsolationLevel.RepeatableRead)
             {
-                commandText.Append("REPEATABLE READ");
+                NpgsqlCommand.ExecuteBlind(conn.Connector, NpgsqlQuery.BeginTransRepeatableRead);
             }
             else if ((isolation == IsolationLevel.Serializable) ||
                 (isolation == IsolationLevel.Snapshot))
             {
-                commandText.Append("SERIALIZABLE");
+                NpgsqlCommand.ExecuteBlind(conn.Connector, NpgsqlQuery.BeginTransSerializable);
             }
             else
             {
                 // Set isolation level default to read committed.
                 _isolation = IsolationLevel.ReadCommitted;
-                commandText.Append("READ COMMITTED");
+                NpgsqlCommand.ExecuteBlind(conn.Connector, NpgsqlQuery.BeginTransReadCommitted);
             }
-
-            commandText.Append(";");
-
-            NpgsqlCommand.ExecuteBlind(conn.Connector, commandText.ToString());
 
             _conn.Connector.Transaction = this;
         }
@@ -97,6 +91,9 @@ namespace Npgsql
             get { return _conn; }
         }
 
+        /// <summary>
+        /// DB connection.
+        /// </summary>
         protected override DbConnection DbConnection
         {
             get { return Connection; }
@@ -120,6 +117,10 @@ namespace Npgsql
             }
         }
 
+        /// <summary>
+        /// Dispose.
+        /// </summary>
+        /// <param name="disposing"></param>
         protected override void Dispose(bool disposing)
         {
             if (disposing && this._conn != null)
@@ -160,7 +161,7 @@ namespace Npgsql
 
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "Commit");
 
-            NpgsqlCommand.ExecuteBlind(_conn.Connector, "COMMIT");
+            NpgsqlCommand.ExecuteBlind(_conn.Connector, NpgsqlQuery.CommitTransaction);
 
             _conn.Connector.Transaction = null;
             _conn = null;
@@ -180,7 +181,7 @@ namespace Npgsql
 
             NpgsqlEventLog.LogMethodEnter(LogLevel.Debug, CLASSNAME, "Rollback");
 
-            NpgsqlCommand.ExecuteBlind(_conn.Connector, "ROLLBACK");
+            NpgsqlCommand.ExecuteBlindSuppressTimeout(_conn.Connector, NpgsqlQuery.RollbackTransaction);
             _conn.Connector.Transaction = null;
             _conn = null;
         }
@@ -215,7 +216,6 @@ namespace Npgsql
         /// <summary>
         /// Creates a transaction save point.
         /// </summary>
-
         public void Save(String savePointName)
         {
 
@@ -240,6 +240,7 @@ namespace Npgsql
             NpgsqlCommand.ExecuteBlind(_conn.Connector, string.Format("SAVEPOINT {0}", savePointName));
 
         }
+
         /// <summary>
         /// Cancel the transaction without telling the backend about it.  This is
         /// used to make the transaction go away when closing a connection.
